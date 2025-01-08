@@ -19,11 +19,14 @@ func main() {
 	// create a key for "Cognitive Services" (kind=SpeechServices). Once the key is available
 	// in the Azure portal, push it into an environment variable (export AZUREKEY=SYS64738).
 	// By default the free tier keys are served out of West US2
-	var apiKey string
-	if apiKey = os.Getenv("AZUREKEY"); apiKey == "" {
-		exit(fmt.Errorf("please set your AZUREKEY environment variable"))
+	var apiKey, region string
+	if apiKey = os.Getenv("AZURE_KEY"); apiKey == "" {
+		exit(fmt.Errorf("please set your AZURE_KEY environment variable"))
 	}
-	az, err := tts.New(apiKey, tts.RegionEastUS)
+	if region = os.Getenv("AZURE_REGION"); region == "" {
+		exit(fmt.Errorf("please set your AZURE_REGION environment variable"))
+	}
+	az, err := tts.New(apiKey, tts.Region(region))
 	if err != nil {
 		exit(fmt.Errorf("failed to create new client, received %v", err))
 	}
@@ -34,9 +37,12 @@ func main() {
 	ctx := context.Background()
 	b, err := az.SynthesizeWithContext(
 		ctx,
-		"64 BASIC BYTES FREE. READY.",
-		tts.LocaleEnUS,
-		tts.GenderFemale,
+		tts.VoiceParam{
+			SpeechText: "64 BASIC BYTES FREE. READY.",
+			Voice:      "en-US-AvaMultilingualNeural",
+			Locale:     tts.LocaleEnUS,
+			Gender:     tts.GenderFemale,
+		},
 		tts.AudioOutput_audio_16khz_32kbitrate_mono_mp3)
 
 	if err != nil {

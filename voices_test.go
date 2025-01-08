@@ -20,6 +20,7 @@ func TestFetchVoiceList(t *testing.T) {
 		SubscriptionKey:     "SYS64738",
 		accessToken:         "SYS49152",
 		voiceServiceListURL: ts.URL,
+		client:              &http.Client{},
 	}
 	vl, err := az.fetchVoiceList()
 	if err != nil {

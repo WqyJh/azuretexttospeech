@@ -24,14 +24,9 @@ const tokenRefreshTimeout = time.Second * 15
 // SynthesizeWithContext returns a bytestream of the rendered text-to-speech in the target audio format. `speechText` is the string of
 // text in which a user wishes to Synthesize, `region` is the language/locale, `gender` is the desired output voice
 // and `audioOutput` captures the audio format.
-func (az *AzureCSTextToSpeech) SynthesizeWithContext(ctx context.Context, speechText string, locale Locale, gender Gender, audioOutput AudioOutput) ([]byte, error) {
+func (az *AzureCSTextToSpeech) SynthesizeWithContext(ctx context.Context, param VoiceParam, audioOutput AudioOutput) ([]byte, error) {
 
-	description, ok := az.RegionVoiceMap[supportedVoices{gender, locale}]
-	if !ok {
-		return nil, fmt.Errorf("unable to to locate RegionVoiceMap{region=%s, gender=%s} pair", locale, gender)
-	}
-
-	v, err := voiceXMLRender(speechText, description, locale, gender)
+	v, err := voiceXMLRender(param)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render voiceXML, %v", err)
 	}
@@ -45,7 +40,7 @@ func (az *AzureCSTextToSpeech) SynthesizeWithContext(ctx context.Context, speech
 	request.Header.Set("User-Agent", "azuretts")
 
 	client := &http.Client{}
-	response, err := client.Do(request.WithContext(ctx))
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +56,8 @@ func (az *AzureCSTextToSpeech) SynthesizeWithContext(ctx context.Context, speech
 		return nil, fmt.Errorf("%d - A required parameter is missing, empty, or null. Or, the value passed to either a required or optional parameter is invalid. A common issue is a header that is too long", response.StatusCode)
 	case http.StatusUnauthorized:
 		return nil, fmt.Errorf("%d - The request is not authorized. Check to make sure your subscription key or token is valid and in the correct region", response.StatusCode)
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("%d - The request is forbidden. Check the voice name or other parameters", response.StatusCode)
 	case http.StatusRequestEntityTooLarge:
 		return nil, fmt.Errorf("%d - The SSML input is longer than 1024 characters", response.StatusCode)
 	case http.StatusUnsupportedMediaType:
@@ -69,27 +66,27 @@ func (az *AzureCSTextToSpeech) SynthesizeWithContext(ctx context.Context, speech
 		return nil, fmt.Errorf("%d - You have exceeded the quota or rate of requests allowed for your subscription", response.StatusCode)
 	case http.StatusBadGateway:
 		return nil, fmt.Errorf("%d - Network or server-side issue. May also indicate invalid headers", response.StatusCode)
+	default:
+		return nil, fmt.Errorf("%d - received unexpected HTTP status code", response.StatusCode)
 	}
-
-	return nil, fmt.Errorf("%d - received unexpected HTTP status code", response.StatusCode)
 }
 
 // Synthesize directs to SynthesizeWithContext. A new context.Withtimeout is created with the timeout as defined by synthesizeActionTimeout
-func (az *AzureCSTextToSpeech) Synthesize(speechText string, locale Locale, gender Gender, audioOutput AudioOutput) ([]byte, error) {
+func (az *AzureCSTextToSpeech) Synthesize(param VoiceParam, audioOutput AudioOutput) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), synthesizeActionTimeout)
 	defer cancel()
-	return az.SynthesizeWithContext(ctx, speechText, locale, gender, audioOutput)
+	return az.SynthesizeWithContext(ctx, param, audioOutput)
 }
 
 // TTSApiXMLPayload templates the payload required for API.
 // See: https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-text-to-speech#sample-request
-const ttsApiXMLTemplate = `<speak version='1.0' xml:lang='{{.Locale}}'><voice xml:lang='{{.Locale}}' xml:gender='{{.Gender}}' name='{{.Description}}'>{{.SpeechText}}</voice></speak>`
+const ttsApiXMLTemplate = `<speak version='1.0' xml:lang='{{.Locale}}'><voice xml:lang='{{.Locale}}' xml:gender='{{.Gender}}' name='{{.Voice}}'>{{.SpeechText}}</voice></speak>`
 
-type VoiceXMLData struct {
-	SpeechText  string
-	Description string
-	Locale      Locale
-	Gender      Gender
+type VoiceParam struct {
+	SpeechText string
+	Voice      string
+	Locale     Locale
+	Gender     Gender
 }
 
 var (
@@ -98,16 +95,9 @@ var (
 
 // voiceXMLRender renders the XML payload for the TTS api.
 // For API reference see https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-text-to-speech#sample-request
-func voiceXMLRender(speechText, description string, locale Locale, gender Gender) (string, error) {
-	data := VoiceXMLData{
-		SpeechText:  speechText,
-		Description: description,
-		Locale:      locale,
-		Gender:      gender,
-	}
-
+func voiceXMLRender(param VoiceParam) (string, error) {
 	var result bytes.Buffer
-	err := voiceXMLTemplate.Execute(&result, data)
+	err := voiceXMLTemplate.Execute(&result, param)
 	if err != nil {
 		return "", err
 	}
@@ -120,13 +110,16 @@ func voiceXMLRender(speechText, description string, locale Locale, gender Gender
 // https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-apis#authentication .
 // Note: This does not need to be called by a client, since this automatically runs via a background go-routine (`startRefresher`)
 func (az *AzureCSTextToSpeech) refreshToken() error {
-	request, _ := http.NewRequest(http.MethodPost, az.tokenRefreshURL, nil)
+	request, err := http.NewRequest(http.MethodPost, az.tokenRefreshURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request, %v", err)
+	}
 	request.Header.Set("Ocp-Apim-Subscription-Key", az.SubscriptionKey)
 	client := &http.Client{Timeout: tokenRefreshTimeout}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch token, %v", err)
 	}
 	defer response.Body.Close()
 
@@ -166,13 +159,13 @@ func (az *AzureCSTextToSpeech) startRefresher() chan bool {
 
 // AzureCSTextToSpeech stores configuration and state information for the TTS client.
 type AzureCSTextToSpeech struct {
-	accessToken         string // is the auth token received from `TokenRefreshAPI`. Used in the Authorization: Bearer header.
-	RegionVoiceMap      RegionVoiceMap
+	accessToken         string    // is the auth token received from `TokenRefreshAPI`. Used in the Authorization: Bearer header.
 	SubscriptionKey     string    // API key for Azure's Congnitive Speech services
 	TokenRefreshDoneCh  chan bool // channel to stop the token refresh goroutine.
 	tokenRefreshURL     string
 	voiceServiceListURL string
 	textToSpeechURL     string
+	client              *http.Client
 }
 
 // New returns an AzureCSTextToSpeech object.
@@ -184,18 +177,13 @@ func New(subscriptionKey string, region Region) (*AzureCSTextToSpeech, error) {
 	az.textToSpeechURL = fmt.Sprintf(textToSpeechAPI, region)
 	az.tokenRefreshURL = fmt.Sprintf(tokenRefreshAPI, region)
 	az.voiceServiceListURL = fmt.Sprintf(voiceListAPI, region)
+	az.client = &http.Client{}
 
 	// api requires that the token is refreshed every 10 mintutes.
 	// We will do this task in the background every ~9 minutes.
 	if err := az.refreshToken(); err != nil {
 		return nil, fmt.Errorf("failed to fetch initial token, %v", err)
 	}
-
-	m, err := az.buildVoiceToRegionMap()
-	if err != nil {
-		return nil, fmt.Errorf("unable to fetch voice-map, %v", err)
-	}
-	az.RegionVoiceMap = m
 
 	az.TokenRefreshDoneCh = az.startRefresher()
 	return az, nil

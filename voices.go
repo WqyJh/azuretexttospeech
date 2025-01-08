@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 )
 
 // voiceListAPI is the source for supported voice list to region mapping
@@ -28,30 +27,6 @@ type regionVoiceListResponse struct {
 	VoiceType       voiceType `json:"VoiceType"`
 }
 
-// supportedVoices represents the key used within the `localeToGender` map.
-type supportedVoices struct {
-	Gender Gender
-	Locale Locale
-}
-
-type RegionVoiceMap map[supportedVoices]string
-
-func (az *AzureCSTextToSpeech) buildVoiceToRegionMap() (RegionVoiceMap, error) {
-
-	v, err := az.fetchVoiceList()
-	if err != nil {
-		return nil, err
-	}
-
-	m := make(map[supportedVoices]string)
-	for _, x := range v {
-		if x.VoiceType == voiceStandard {
-			m[supportedVoices{Gender: x.Gender, Locale: x.Locale}] = x.ShortName
-		}
-	}
-	return m, err
-}
-
 func (az *AzureCSTextToSpeech) fetchVoiceList() ([]regionVoiceListResponse, error) {
 
 	request, err := http.NewRequest(http.MethodGet, az.voiceServiceListURL, nil)
@@ -60,8 +35,7 @@ func (az *AzureCSTextToSpeech) fetchVoiceList() ([]regionVoiceListResponse, erro
 	}
 
 	request.Header.Set("Authorization", "Bearer "+az.accessToken)
-	client := &http.Client{Timeout: 2 * time.Second}
-	response, err := client.Do(request)
+	response, err := az.client.Do(request)
 	if err != nil {
 		return nil, err
 	}
