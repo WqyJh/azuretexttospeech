@@ -3,10 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 
-	tts "github.com/jesseward/azuretexttospeech"
+	tts "github.com/WqyJh/azuretexttospeech"
 )
 
 func exit(err error) {
@@ -22,7 +21,7 @@ func main() {
 	// By default the free tier keys are served out of West US2
 	var apiKey string
 	if apiKey = os.Getenv("AZUREKEY"); apiKey == "" {
-		exit(fmt.Errorf("Please set your AZUREKEY environment variable"))
+		exit(fmt.Errorf("please set your AZUREKEY environment variable"))
 	}
 	az, err := tts.New(apiKey, tts.RegionEastUS)
 	if err != nil {
@@ -38,14 +37,14 @@ func main() {
 		"64 BASIC BYTES FREE. READY.",
 		tts.LocaleEnUS,
 		tts.GenderFemale,
-		tts.Audio16khz32kbitrateMonoMp3)
+		tts.AudioOutput_audio_16khz_32kbitrate_mono_mp3)
 
 	if err != nil {
 		exit(fmt.Errorf("unable to synthesize, received: %v", err))
 	}
 
 	// send results to disk.
-	err = ioutil.WriteFile("audio.mp3", b, 0644)
+	err = os.WriteFile("audio.mp3", b, 0644)
 	if err != nil {
 		exit(fmt.Errorf("unable to write file, received %v", err))
 	}

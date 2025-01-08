@@ -35,14 +35,14 @@ USAGE
 			"64 BASIC BYTES FREE. READY.",
 			tts.LocaleEnUS,
 			tts.GenderFemale,
-			tts.Audio16khz32kbitrateMonoMp3)
+			tts.AudioOutput_audio_16khz_32kbitrate_mono_mp3)
 
 		if err != nil {
 			exit(fmt.Errorf("unable to synthesize, received: %v", err))
 		}
 
 		// send results to disk.
-		err = ioutil.WriteFile("audio.mp3", b, 0644)
+		err = os.WriteFile("audio.mp3", b, 0644)
 		if err != nil {
 			exit(fmt.Errorf("unable to write file, received %v", err))
 		}

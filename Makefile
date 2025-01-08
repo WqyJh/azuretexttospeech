@@ -7,10 +7,16 @@ VERSION := 2.0
 all: clean generate vet test build
 ci: clean vet test build
 
-.PHONY : clean generate vet test build
+.PHONY: check_enumer
+check_enumer:
+	@if command -v your_command_name > /dev/null; then \
+		echo "Command exists"; \
+	else \
+		go install github.com/dmarkham/enumer@latest; \
+	fi
 
 .PHONY: generate
-generate:
+generate: check_enumer
 	go generate .
 
 .PHONY: vet

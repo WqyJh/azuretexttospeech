@@ -10,7 +10,9 @@ import (
 
 func TestVoiceXML(t *testing.T) {
 	expect := "<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Female' name='ar-EG-Hoda'>Microsoft Speech Service Text-to-Speech API</voice></speak>"
-	assert.Equal(t, expect, voiceXML("Microsoft Speech Service Text-to-Speech API", "ar-EG-Hoda", LocaleEnUS, GenderFemale))
+	xml, err := voiceXMLRender("Microsoft Speech Service Text-to-Speech API", "ar-EG-Hoda", LocaleEnUS, GenderFemale)
+	assert.NoError(t, err)
+	assert.Equal(t, expect, xml)
 }
 
 func TestSynthesize(t *testing.T) {
@@ -22,7 +24,7 @@ func TestSynthesize(t *testing.T) {
 	}
 
 	// payload should be nil and err should be true, since DeCH + Female is not a valid combination
-	payload, err := az.Synthesize("test-speech", LocaleDeCH, GenderFemale, AudioRIFF8Bit8kHzMonoPCM)
+	payload, err := az.Synthesize("test-speech", LocaleDeCH, GenderFemale, AudioOutput_riff_8khz_8bit_mono_alaw)
 	assert.Error(t, err, "should raise an error")
 	assert.Nil(t, payload, "payload should be nil")
 
@@ -35,7 +37,7 @@ func TestSynthesize(t *testing.T) {
 
 	az.textToSpeechURL = ts.URL
 	// request should now be successful with a valid locale and gender.
-	payload, err = az.Synthesize("SYS4096", LocaleDeCH, GenderMale, AudioRIFF8Bit8kHzMonoPCM)
+	payload, err = az.Synthesize("SYS4096", LocaleDeCH, GenderMale, AudioOutput_riff_8khz_8bit_mono_alaw)
 	assert.NoError(t, err)
 	assert.Equal(t, payload, []byte("SYS4096"))
 }
